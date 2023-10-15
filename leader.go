@@ -6,14 +6,11 @@ import (
 	"os"
 )
 
-var (
-	clientMap = make(map[int]net.Conn)
-	nodeCount = 0
-)
+var clientList []net.Conn 
 
 func readInput() {
 	var input string
-	fmt.Println("BEGGINING READ INPUT")
+
 	// Read a single line of input
 	for {
 		_, err := fmt.Scan(&input)
@@ -21,26 +18,38 @@ func readInput() {
 			fmt.Println("Error:", err)
 			return
 		}
-		fmt.Println("came here" + input)
-		conn := clientMap[1]
-		fmt.Println("Node Count", nodeCount)
-		if nodeCount == 1 {
 
+		for _, conn := range clientList {
 			_, _ = conn.Write([]byte(input))
-
 		}
 	}
 
 }
 
-func handleConnection(conn net.Conn) {
-	//defer conn.Close()
+func handleClosedConnection() {
+	for _, conn := range clientList {
+		buf := make([]byte, 1, 1)
+        _, err := conn.Read(buf)
+        if err != nil {
+			clientList = removeConnection(clientList, conn)
+			fmt.Printf("Removed connection from %s\n", conn.RemoteAddr())
+        }
+	}
+}
 
-	// Handle client connection here
-	fmt.Println(clientMap)
-	nodeCount++
-	clientMap[nodeCount] = conn
-	fmt.Println(nodeCount)
+func removeConnection(connList []net.Conn, connToRemove net.Conn) []net.Conn {
+	for idx, conn := range connList {
+		if connToRemove == conn {
+			return append(clientList[:idx], clientList[idx+1:]...)
+		}
+	}
+
+	return connList
+}
+ 
+func handleConnection(conn net.Conn) {
+	// defer conn.Close()
+	clientList = append(clientList, conn)
 
 	// You can read and write data to the client using conn
 	fmt.Printf("Accepted connection from %s\n", conn.RemoteAddr())
@@ -60,47 +69,24 @@ func main() {
 		fmt.Printf("Error listening: %v\n", err)
 		os.Exit(1)
 	}
-	//defer listener.Close()
+
+	// defer listener.Close()
 
 	fmt.Printf("Server listening on %s\n", host)
 
-	iterationNumber := 0
-
 	for {
-		fmt.Println("iteration #", iterationNumber)
-		iterationNumber++
 		// Accept incoming connections
 		conn, err := listener.Accept()
-		fmt.Print(conn)
 		if err != nil {
 			fmt.Printf("Error accepting connection: %v\n", err)
-			continue
 		}
 
-		// Handle the connection in a goroutine
+		go handleConnection(conn) // add new clients to client list
 
-		var values []net.Conn
+		go handleClosedConnection() // remove closed clients from client list
 
-		// Iterate through the map and append values to the array
-		for _, value := range clientMap {
-			values = append(values, value)
-		}
-
-		if !itemInSlice(conn, values) {
-			go handleConnection(conn)
-		}
-
-		go readInput()
+		go readInput() // continuously read terminal inputs
 
 	}
 
-}
-
-func itemInSlice(item net.Conn, slice []net.Conn) bool {
-	for _, value := range slice {
-		if item == value {
-			return true
-		}
-	}
-	return false
 }

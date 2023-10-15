@@ -24,15 +24,13 @@ func main() {
 
 	for {
 		buffer := make([]byte, 1024)
-		fmt.Println("i am here")
-		conn.SetReadDeadline(time.Time{})
+		conn.SetReadDeadline(time.Time{}) // setting infinite read deadline
 		n, err := conn.Read(buffer)
 		response := string(buffer[:n])
-
 		if err != nil {
-			fmt.Println("Follower node: Error reading response:", err)
+			fmt.Println("Leader node closed connection")
 			return
-		}
+        }
 
 		fmt.Println(response)
 	}
