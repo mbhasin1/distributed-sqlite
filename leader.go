@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 )
 
-var clientList []net.Conn 
+var clientList []net.Conn
 
 func readInput() {
 	var input string
@@ -26,14 +27,27 @@ func readInput() {
 
 }
 
+func readFromConnections() {
+
+	for _, conn := range clientList {
+		buffer := make([]byte, 1024)
+		conn.SetReadDeadline(time.Time{}) // setting infinite read deadline
+		n, _ := conn.Read(buffer)
+		response := string(buffer[:n])
+		fmt.Println(response)
+
+	}
+
+}
+
 func handleClosedConnection() {
 	for _, conn := range clientList {
 		buf := make([]byte, 1, 1)
-        _, err := conn.Read(buf)
-        if err != nil {
+		_, err := conn.Read(buf)
+		if err != nil {
 			clientList = removeConnection(clientList, conn)
 			fmt.Printf("Removed connection from %s\n", conn.RemoteAddr())
-        }
+		}
 	}
 }
 
@@ -46,7 +60,7 @@ func removeConnection(connList []net.Conn, connToRemove net.Conn) []net.Conn {
 
 	return connList
 }
- 
+
 func handleConnection(conn net.Conn) {
 	// defer conn.Close()
 	clientList = append(clientList, conn)
@@ -86,6 +100,8 @@ func main() {
 		go handleClosedConnection() // remove closed clients from client list
 
 		go readInput() // continuously read terminal inputs
+
+		//go readFromConnections()
 
 	}
 

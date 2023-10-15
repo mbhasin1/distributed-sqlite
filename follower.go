@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+func readLeaderMessages() {
+
+}
+
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Println("Usage: go run client.go <server-host:server-port>")
@@ -30,9 +34,11 @@ func main() {
 		if err != nil {
 			fmt.Println("Leader node closed connection")
 			return
-        }
+		}
 
 		fmt.Println(response)
+
+		//conn.Write([]byte("yoyoyo"))
 	}
 
 }
