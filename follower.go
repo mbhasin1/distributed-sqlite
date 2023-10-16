@@ -24,7 +24,7 @@ func main() {
 		fmt.Printf("Error connecting to the server: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	//defer conn.Close()
 
 	for {
 		buffer := make([]byte, 1024)
@@ -38,7 +38,7 @@ func main() {
 
 		fmt.Println(response)
 
-		//conn.Write([]byte("yoyoyo"))
+		conn.Write([]byte("yoyoyo"))
 	}
 
 }

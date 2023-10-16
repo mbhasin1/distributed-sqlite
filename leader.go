@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 )
 
 var clientList []net.Conn
@@ -28,13 +27,14 @@ func readInput() {
 }
 
 func readFromConnections() {
-
+	fmt.Println("inR")
 	for _, conn := range clientList {
 		buffer := make([]byte, 1024)
-		conn.SetReadDeadline(time.Time{}) // setting infinite read deadline
+		//conn.SetReadDeadline(time.Time{}) // setting infinite read deadline
 		n, _ := conn.Read(buffer)
 		response := string(buffer[:n])
 		fmt.Println(response)
+		fmt.Println("got to read")
 
 	}
 
@@ -101,7 +101,7 @@ func main() {
 
 		go readInput() // continuously read terminal inputs
 
-		//go readFromConnections()
+		go readFromConnections()
 
 	}
 
