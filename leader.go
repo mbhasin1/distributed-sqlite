@@ -27,7 +27,7 @@ func readInput() {
 }
 
 func readFromConnections() {
-	fmt.Println("inR")
+	//fmt.Println("inR")
 	for _, conn := range clientList {
 		buffer := make([]byte, 1024)
 		//conn.SetReadDeadline(time.Time{}) // setting infinite read deadline
@@ -69,6 +69,10 @@ func handleConnection(conn net.Conn) {
 	fmt.Printf("Accepted connection from %s\n", conn.RemoteAddr())
 }
 
+func listenConnection(listener net.Listener) {
+
+}
+
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Println("Usage: go run server.go <host:port>")
@@ -95,13 +99,24 @@ func main() {
 			fmt.Printf("Error accepting connection: %v\n", err)
 		}
 
-		go handleConnection(conn) // add new clients to client list
+		//fmt.Println("start0")
+
+		//go listenConnection(listener)
+		go handleConnection(conn)
+
+		//fmt.Println("looping thru funcs")
+
+		// add new clients to client list
 
 		go handleClosedConnection() // remove closed clients from client list
 
+		//fmt.Println("looping thru funcs inp")
 		go readInput() // continuously read terminal inputs
 
+		//mt.Println("looping thru funcs read")
 		go readFromConnections()
+
+		//fmt.Println("looping thru funcs end")
 
 	}
 
