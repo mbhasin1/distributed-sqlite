@@ -31,13 +31,13 @@ func main() {
 	}
 	defer listener.Close()
 
-	fmt.Printf("Leader server is listening on : %s\n", host)
+	fmt.Printf("listening on : %s\n", host)
 
 	go acceptFollowers(listener)
 
 	for {
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Leader, enter a message: ")
+		fmt.Print("enter a message: ")
 		msg, _ := reader.ReadString('\n')
 		sendMessage(msg)
 	}
@@ -51,7 +51,7 @@ func acceptFollowers(listener net.Listener) {
 			continue
 		}
 		followers = append(followers, conn)
-
+		fmt.Printf("accepted connection: %s", conn.RemoteAddr())
 		go handleFollower(conn)
 	}
 }
@@ -69,7 +69,7 @@ func handleFollower(conn net.Conn) {
 		}
 
 		msg := string(buffer)
-		fmt.Printf("Received message from %s: %s", conn.RemoteAddr(), msg)
+		fmt.Printf("\nReceived message from %s: %s", conn.RemoteAddr(), msg)
 		//sendMessage(msg)
 	}
 }
