@@ -1,19 +1,36 @@
 package main
 
 import (
-	"bufio"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
+	"strings"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
+type users_row struct {
+	Id    int
+	Name  string
+	Email string
+}
+
+// type users_row struct {
+// 	id    int
+// 	name  string
+// 	email string
+// }
+
 func main() {
-	if len(os.Args) != 2 {
+	if len(os.Args) != 3 {
 		fmt.Println("Usage: go run client.go <server-host:server-port>")
 		os.Exit(1)
 	}
 
 	serverAddr := os.Args[1]
+	filepath := os.Args[2]
 
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
@@ -21,12 +38,76 @@ func main() {
 		os.Exit(1)
 	}
 	defer conn.Close()
+	db := openDB(filepath)
+	defer db.Close()
+	go receiveMessages(conn, db)
+	//sendMessages(conn)
 
-	go receiveMessages(conn)
-	sendMessages(conn)
+	for {
+	}
+
 }
 
-func receiveMessages(conn net.Conn) {
+func openDB(filepath string) *sql.DB {
+	fmt.Print("in open\n")
+
+	db, err := sql.Open("sqlite3", filepath)
+	if err != nil {
+		fmt.Println(err)
+
+	}
+
+	return db
+}
+
+func exec_query(db *sql.DB, query string) string {
+
+	_, err := db.Exec(query)
+	if err != nil {
+		fmt.Println(err)
+		return "Fail"
+	}
+	return "Pass"
+
+}
+
+func query_sql(db *sql.DB, query string) []users_row {
+
+	rows, err := db.Query(query)
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+	defer rows.Close()
+
+	ret_rows := []users_row{}
+
+	for rows.Next() {
+		var id int
+		var username string
+		var email string
+		err := rows.Scan(&id, &username, &email)
+		if err != nil {
+			fmt.Println(err)
+			return nil
+		}
+		//fmt.Printf("ID: %d, Username: %s, Email: %s\n", id, username, email)
+
+		user_row := users_row{
+			Id:    id,
+			Name:  username,
+			Email: email,
+		}
+
+		ret_rows = append(ret_rows, user_row)
+
+		fmt.Println(ret_rows)
+
+	}
+	return ret_rows
+}
+
+func receiveMessages(conn net.Conn, db *sql.DB) {
 	for {
 		buffer := make([]byte, 1024)
 		_, err := conn.Read(buffer)
@@ -37,18 +118,47 @@ func receiveMessages(conn net.Conn) {
 
 		msg := string(buffer)
 		fmt.Printf("Received message from leader: %s", msg)
+
+		// if query contains select send to query_sql
+		isSelect := (strings.Contains(msg, "SELECT") || strings.Contains(msg, "select"))
+
+		if isSelect {
+			rows := query_sql(db, msg)
+			sendMessages(conn, rows)
+		} else {
+			exec_query(db, msg)
+
+		}
 	}
 }
 
-func sendMessages(conn net.Conn) {
-	for {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Enter a message: ")
-		msg, _ := reader.ReadString('\n')
-		_, err := conn.Write([]byte(msg))
-		if err != nil {
-			fmt.Println("Error sending message to leader:", err)
-			os.Exit(1)
-		}
+func sendMessages(conn net.Conn, rows []users_row) {
+	fmt.Println((rows))
+	jsonData, err := json.Marshal(rows)
+	fmt.Println((jsonData))
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
+
+	// jsonData, err := json.Marshal("hello")
+	// if err != nil {
+	// 	return
+	// }
+
+	_, err = conn.Write(jsonData)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	// for {
+	// 	reader := bufio.NewReader(os.Stdin)
+	// 	fmt.Print("Enter a message: ")
+	// 	msg, _ := reader.ReadString('\n')
+	// 	_, err := conn.Write([]byte(msg))
+	// 	if err != nil {
+	// 		fmt.Println("Error sending message to leader:", err)
+	// 		os.Exit(1)
+	// 	}
+	// }
 }
