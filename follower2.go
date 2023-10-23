@@ -17,15 +17,9 @@ type users_row struct {
 	Email string
 }
 
-// type users_row struct {
-// 	id    int
-// 	name  string
-// 	email string
-// }
-
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Println("Usage: go run client.go <server-host:server-port>")
+		fmt.Println("Usage: go run client.go <server-host:server-port> <path-to-db-file.db>")
 		os.Exit(1)
 	}
 
@@ -41,8 +35,8 @@ func main() {
 	db := openDB(filepath)
 	defer db.Close()
 	go receiveMessages(conn, db)
-	//sendMessages(conn)
 
+	// wait for go routines
 	for {
 	}
 
@@ -91,7 +85,6 @@ func query_sql(db *sql.DB, query string) []users_row {
 			fmt.Println(err)
 			return nil
 		}
-		//fmt.Printf("ID: %d, Username: %s, Email: %s\n", id, username, email)
 
 		user_row := users_row{
 			Id:    id,
@@ -141,24 +134,9 @@ func sendMessages(conn net.Conn, rows []users_row) {
 		return
 	}
 
-	// jsonData, err := json.Marshal("hello")
-	// if err != nil {
-	// 	return
-	// }
-
 	_, err = conn.Write(jsonData)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	// for {
-	// 	reader := bufio.NewReader(os.Stdin)
-	// 	fmt.Print("Enter a message: ")
-	// 	msg, _ := reader.ReadString('\n')
-	// 	_, err := conn.Write([]byte(msg))
-	// 	if err != nil {
-	// 		fmt.Println("Error sending message to leader:", err)
-	// 		os.Exit(1)
-	// 	}
-	// }
 }

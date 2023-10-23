@@ -11,22 +11,15 @@ import (
 	"strings"
 )
 
+var (
+	conn_map = make(map[int][]net.Conn)
+)
+
 type users_row struct {
 	Id    int
 	Name  string
 	Email string
 }
-
-var (
-	followers []net.Conn
-	conn_map  = make(map[int][]net.Conn)
-)
-
-// type users_row struct {
-// 	id    int
-// 	name  string
-// 	email string
-// }
 
 func main() {
 	if len(os.Args) != 2 {
@@ -60,6 +53,7 @@ func main() {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("enter a message: ")
+		fmt.Println(conn_map)
 		msg, _ := reader.ReadString('\n')
 		sendMessage(msg)
 	}
@@ -72,7 +66,6 @@ func acceptFollowers(listener net.Listener) {
 			fmt.Println("Error accepting connection:", err)
 			continue
 		}
-		followers = append(followers, conn)
 
 		valList1, _ := conn_map[0]
 		valList2, _ := conn_map[1]
@@ -103,23 +96,18 @@ func handleFollower(conn net.Conn) {
 		}
 
 		var receivedData []users_row
-		//fmt.Println("buffer", buffer[:n])
+
 		err = json.Unmarshal(buffer[:n], &receivedData)
 
 		if err != nil {
-
 			fmt.Println(err)
 			return
 		}
 
-		fmt.Println(receivedData)
 		// Process the received data
 		for _, item := range receivedData {
 			fmt.Printf("Received: ID=%d, UserName=%s, Email=%s\n", item.Id, item.Name, item.Email)
 		}
-		//msg := string(buffer)
-		//fmt.Printf("\nReceived message from %s: %s", conn.RemoteAddr(), msg)
-		//sendMessage(msg)
 	}
 }
 
@@ -136,21 +124,18 @@ func sendMessage(msg string) {
 
 			pattern := `[Ii][Dd]\s*(<=|>=|<|>|!=)\s*(\d+)`
 
-			// Compile the regular expression
 			re := regexp.MustCompile(pattern)
 
-			// Find all matches in the input string
 			matches := re.FindAllStringSubmatch(query, -1)
 
 			hasEquality := len(matches) == 0
 
+			// select query with equality on primary key - send to one primary node
 			if hasPrimaryKey && hasEquality {
 				pattern := `[Ii][Dd]\s*=\s*(\d+)`
 
-				// Compile the regular expression
 				re := regexp.MustCompile(pattern)
 
-				// Find all matches in the input string
 				matches := re.FindAllStringSubmatch(query, -1)
 
 				var id_str string
@@ -164,11 +149,7 @@ func sendMessage(msg string) {
 
 				hashedId := hashID(id)
 
-				// fmt.Println("connmap", conn_map, "hashedID", hashedId)
-
 				connList, _ := conn_map[hashedId]
-
-				// fmt.Println("connlist", connList)
 
 				conn := connList[0]
 
@@ -180,6 +161,7 @@ func sendMessage(msg string) {
 				}
 
 			} else {
+				// select query with non-equality on primary key - send to both primary nodes
 				for _, connList := range conn_map {
 					fmt.Println("connList", connList)
 					conn := connList[0]
@@ -192,16 +174,16 @@ func sendMessage(msg string) {
 			}
 
 		} else {
+			// insert, update, delete
 			pattern := `\d+`
 
 			re := regexp.MustCompile(pattern)
 
-			// Find the first match in the input string
 			match := re.FindString(query)
+
 			pk, _ := strconv.Atoi(match)
 
 			hashedId := hashID(pk)
-			fmt.Println(pk)
 
 			connList, _ := conn_map[hashedId]
 
@@ -215,14 +197,6 @@ func sendMessage(msg string) {
 		}
 
 	}
-
-	// for _, follower := range followers {
-	// 	_, err := follower.Write([]byte(msg))
-	// 	if err != nil {
-	// 		fmt.Printf("Error sending message to %s: %v\n", follower.RemoteAddr(), err)
-	// 		removeFollower(follower)
-	// 	}
-	// }
 }
 
 func hashID(id int) int {
@@ -230,10 +204,14 @@ func hashID(id int) int {
 }
 
 func removeFollower(follower net.Conn) {
-	for i, conn := range followers {
-		if conn == follower {
-			followers = append(followers[:i], followers[i+1:]...)
-			break
+	for _, connList := range conn_map {
+		for i, conn := range connList {
+			if conn == follower {
+				connList = append(connList[:i], connList[i+1:]...)
+				conn_map[i] = connList
+				break
+			}
 		}
+
 	}
 }
