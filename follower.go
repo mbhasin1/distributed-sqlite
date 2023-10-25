@@ -8,18 +8,14 @@ import (
 	"os"
 	"strings"
 
+	"distributed-sqlite/types"
+
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type users_row struct {
-	Id    int
-	Name  string
-	Email string
-}
-
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Println("Usage: go run client.go <server-host:server-port> <path-to-db-file.db>")
+		fmt.Println("Usage: go run follower.go <server-host:server-port> <path-to-db-file.db>")
 		os.Exit(1)
 	}
 
@@ -65,7 +61,7 @@ func exec_query(db *sql.DB, query string) string {
 
 }
 
-func query_sql(db *sql.DB, query string) []users_row {
+func query_sql(db *sql.DB, query string) []types.UsersRow {
 
 	rows, err := db.Query(query)
 	if err != nil {
@@ -74,7 +70,7 @@ func query_sql(db *sql.DB, query string) []users_row {
 	}
 	defer rows.Close()
 
-	ret_rows := []users_row{}
+	ret_rows := []types.UsersRow{}
 
 	for rows.Next() {
 		var id int
@@ -86,7 +82,7 @@ func query_sql(db *sql.DB, query string) []users_row {
 			return nil
 		}
 
-		user_row := users_row{
+		user_row := types.UsersRow{
 			Id:    id,
 			Name:  username,
 			Email: email,
@@ -125,7 +121,7 @@ func receiveMessages(conn net.Conn, db *sql.DB) {
 	}
 }
 
-func sendMessages(conn net.Conn, rows []users_row) {
+func sendMessages(conn net.Conn, rows []types.UsersRow) {
 	fmt.Println((rows))
 	jsonData, err := json.Marshal(rows)
 	fmt.Println((jsonData))
