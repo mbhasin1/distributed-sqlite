@@ -13,3 +13,12 @@ type UsersRow struct {
 	Name  string
 	Email string
 }
+
+// structure contains atrributes about a query
+type Query struct {
+	Query  string
+	Type   string
+	PKey   int // not 0 only if equality where condition on pkey is present
+	Tables []string
+	HasOr  bool
+}

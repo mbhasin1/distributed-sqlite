@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
+
+	"distributed-sqlite/internal/parser"
 )
 
 func SendMessageToFollowers(msg string) {
@@ -13,72 +13,38 @@ func SendMessageToFollowers(msg string) {
 
 	for _, query := range queries {
 
-		// parse query here
+		queryStruct, err := parser.ParseQuery(query)
 
-		if isSelectQuery {
+		if err != nil {
+			// write error back to leader, no need to send to followers!
+		}
 
-			// select query with equality on primary key - send to one primary node
-			if hasPrimaryKey && hasEquality {
-				pattern := `[Ii][Dd]\s*=\s*(\d+)`
+		if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
 
-				re := regexp.MustCompile(pattern)
+			// send to one partition
 
-				matches := re.FindAllStringSubmatch(query, -1)
-
-				var id_str string
-				for _, match := range matches {
-					if len(match) > 1 {
-						id_str = match[1]
-					}
-				}
-
-				id, _ := strconv.Atoi(id_str)
-
-				hashedId := hashID(id)
-
-				connList, _ := connMap[hashedId]
-
-				conn := connList[0]
-
-				_, err := conn.Write([]byte(query))
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-
-			} else {
-				// select query with non-equality on primary key - send to both primary nodes
-				for _, connList := range connMap {
-					conn := connList[0]
-					_, err := conn.Write([]byte(query))
-					if err != nil {
-						fmt.Println(err)
-						return
-					}
-				}
-			}
-
-		} else {
-			// insert, update, delete
-			pattern := `\d+`
-
-			re := regexp.MustCompile(pattern)
-
-			match := re.FindString(query)
-
-			pk, _ := strconv.Atoi(match)
-
-			hashedId := hashID(pk)
+			hashedId := hashID(queryStruct.PKey)
 
 			connList, _ := connMap[hashedId]
 
-			for _, conn := range connList {
-				_, err := conn.Write([]byte(query))
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
+			conn := connList[0]
+
+			_, err := conn.Write([]byte(query))
+			if err != nil {
+				fmt.Println(err)
+				return
 			}
+
+		} else {
+			// write to both partitions
+
+			// for _, conn := range connList {
+			// 	_, err := conn.Write([]byte(query))
+			// 	if err != nil {
+			// 		fmt.Println(err)
+			// 		return
+			// 	}
+			// }
 		}
 
 	}
