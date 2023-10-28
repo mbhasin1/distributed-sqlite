@@ -2,17 +2,33 @@ package main
 
 import (
 	"bufio"
+	"distributed-sqlite/internal/parser"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
-
-	"distributed-sqlite/types"
+	"strings"
 )
 
 var (
 	connMap = make(map[int][]net.Conn) // map of <partition id, pool of active participants>
 )
+
+// record structure from Users table
+type UsersRow struct {
+	Id    int
+	Name  string
+	Email string
+}
+
+// structure contains atrributes about a query
+type Query struct {
+	Query  string
+	Type   string
+	PKey   int // not 0 only if equality where condition on pkey is present
+	Tables []string
+	HasOr  bool
+}
 
 func main() {
 
@@ -84,7 +100,7 @@ func readFromFollower(conn net.Conn) {
 			return
 		}
 
-		var receivedData []types.UsersRow
+		var receivedData []UsersRow
 
 		err = json.Unmarshal(buffer[:n], &receivedData)
 
@@ -117,4 +133,60 @@ func removeFollower(follower net.Conn) {
 		}
 
 	}
+}
+
+func SendMessageToFollowers(msg string) {
+
+	queries := strings.Split(msg, ";")
+
+	// iterate throuugh all queries except last (empty) query
+	for i := 0; i < len(queries)-1; i++ {
+
+		query := queries[i]
+
+		queryStruct, err := parser.ParseQuery(query)
+
+		if err != nil {
+			// write error back to leader, no need to send to followers!
+		}
+
+		fmt.Println(queryStruct)
+
+		if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
+
+			// send to one partition
+
+			hashedId := hashID(queryStruct.PKey)
+
+			connList, _ := connMap[hashedId]
+
+			conn := connList[0]
+
+			_, err := conn.Write([]byte(query))
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+		} else {
+
+			// send to both partitions
+
+			for _, connList := range connMap {
+				for _, conn := range connList {
+					_, err := conn.Write([]byte(query))
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+				}
+			}
+
+		}
+
+	}
+}
+
+func hashID(id int) int {
+	return id % 2
 }

@@ -1,55 +1,58 @@
-package main
+// package main
 
-import (
-	"fmt"
-	"strings"
+// import (
+// 	"fmt"
+// 	"strings"
 
-	"distributed-sqlite/internal/parser"
-)
+// 	"distributed-sqlite/internal/parser"
+// )
 
-func SendMessageToFollowers(msg string) {
+// func SendMessageToFollowers(msg string) {
 
-	queries := strings.Split(msg, ";")
+// 	queries := strings.Split(msg, ";")
 
-	for _, query := range queries {
+// 	for _, query := range queries {
 
-		queryStruct, err := parser.ParseQuery(query)
+// 		queryStruct, err := parser.ParseQuery(query)
 
-		if err != nil {
-			// write error back to leader, no need to send to followers!
-		}
+// 		if err != nil {
+// 			// write error back to leader, no need to send to followers!
+// 		}
 
-		if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
+// 		if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
 
-			// send to one partition
+// 			// send to one partition
 
-			hashedId := hashID(queryStruct.PKey)
+// 			hashedId := hashID(queryStruct.PKey)
 
-			connList, _ := connMap[hashedId]
+// 			connList, _ := connMap[hashedId]
 
-			conn := connList[0]
+// 			conn := connList[0]
 
-			_, err := conn.Write([]byte(query))
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+// 			_, err := conn.Write([]byte(query))
+// 			if err != nil {
+// 				fmt.Println(err)
+// 				return
+// 			}
 
-		} else {
-			// write to both partitions
+// 		} else {
+// 			// write to both partitions
 
-			// for _, conn := range connList {
-			// 	_, err := conn.Write([]byte(query))
-			// 	if err != nil {
-			// 		fmt.Println(err)
-			// 		return
-			// 	}
-			// }
-		}
+// 			for _, connList := range connMap {
+// 				for _, conn := range connList {
+// 					_, err := conn.Write([]byte(query))
+// 					if err != nil {
+// 						fmt.Println(err)
+// 						return
+// 					}
+// 				}
+// 			}
 
-	}
-}
+// 		}
 
-func hashID(id int) int {
-	return id % 2
-}
+// 	}
+// }
+
+// func hashID(id int) int {
+// 	return id % 2
+// }
