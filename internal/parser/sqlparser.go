@@ -61,7 +61,7 @@ func extractTableNamesFromSelect(stmt *sqlparser.Select) []string {
 }
 
 func extractPKeyFromInsert(values string) int {
-	re := regexp.MustCompile(`\d`)
+	re := regexp.MustCompile(`\d+`)
 	matches := re.FindString(values)
 
 	if matches != "" {

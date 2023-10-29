@@ -13,9 +13,10 @@ import (
 
 // record structure from Users table
 type UsersRow struct {
-	Id    int
-	Name  string
-	Email string
+	Id        int
+	Name      string
+	Email     string
+	VoteCount int
 }
 
 // structure contains atrributes about a query
@@ -64,50 +65,189 @@ func openDB(filepath string) *sql.DB {
 	return db
 }
 
-func exec_query(db *sql.DB, query string) string {
+func exec_query(db *sql.DB, query string, conn net.Conn) string {
+	startsWithP := strings.HasPrefix(query, "p")
 
-	_, err := db.Exec(query)
-	if err != nil {
-		fmt.Println(err)
-		return "Fail"
-	}
-	return "Pass"
+	if startsWithP {
+		fmt.Println("it did started with p")
+		//strip the p
+		query = query[1:]
+		tx, err := db.Begin()
+		if err != nil {
+			// call sendmessage
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+			return ""
+		}
+		defer tx.Rollback() // The rollback will be ignored if the tx has been committed later in the function.
 
-}
+		fmt.Println("made it past db begin")
 
-func query_sql(db *sql.DB, query string) []UsersRow {
-
-	rows, err := db.Query(query)
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
-	defer rows.Close()
-
-	ret_rows := []UsersRow{}
-
-	for rows.Next() {
-		var id int
-		var username string
-		var email string
-		err := rows.Scan(&id, &username, &email)
+		_, err = tx.Exec(query)
 		if err != nil {
 			fmt.Println(err)
-			return nil
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+			fmt.Println("failed votecount: ", user_row.VoteCount)
+			return ""
 		}
 
 		user_row := UsersRow{
-			Id:    id,
-			Name:  username,
-			Email: email,
+			VoteCount: 1,
 		}
 
-		ret_rows = append(ret_rows, user_row)
+		fmt.Println("VoteCount: ", user_row.VoteCount)
+		sendMessages(conn, []UsersRow{user_row})
 
-		fmt.Println(ret_rows)
+	} else {
+		fmt.Println("it did started with c")
+		//strip the c
+		query = query[1:]
+		tx, err := db.Begin()
+		if err != nil {
+			// call sendmessage
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+			return ""
+		}
+		defer tx.Rollback() // The rollback will be ignored if the tx has been committed later in the function.
 
+		fmt.Println("made it past db begin")
+
+		_, err = tx.Exec(query)
+		if err != nil {
+			fmt.Println(err)
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+			fmt.Println("failed votecount: ", user_row.VoteCount)
+			return ""
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			fmt.Println("did it come here?")
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+		}
+
+		user_row := UsersRow{
+			VoteCount: 1,
+		}
+
+		fmt.Println("VoteCount: ", user_row.VoteCount)
+		sendMessages(conn, []UsersRow{user_row})
 	}
-	return ret_rows
+
+	return ""
+
+	// _, err := db.Exec(query)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return "Fail"
+	// }
+	// return "Pass"
+
+}
+
+func query_sql(db *sql.DB, query string, conn net.Conn) string {
+
+	startsWithP := strings.HasPrefix(query, "p")
+
+	if startsWithP {
+		fmt.Println("it did started with p")
+		//strip the p
+		query = query[1:]
+		tx, err := db.Begin()
+		if err != nil {
+			// call sendmessage
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+			return ""
+		}
+		defer tx.Rollback() // The rollback will be ignored if the tx has been committed later in the function.
+
+		fmt.Println("made it past db begin")
+
+		_, err = tx.Query(query)
+		if err != nil {
+			fmt.Println(err)
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+			fmt.Println("failed votecount: ", user_row.VoteCount)
+			return ""
+		}
+
+		user_row := UsersRow{
+			VoteCount: 1,
+		}
+
+		fmt.Println("VoteCount: ", user_row.VoteCount)
+		sendMessages(conn, []UsersRow{user_row})
+
+	} else {
+		fmt.Println("it did started with c")
+		//strip the c
+		query = query[1:]
+		tx, err := db.Begin()
+		if err != nil {
+			// call sendmessage
+			user_row := UsersRow{
+				VoteCount: -1,
+			}
+			sendMessages(conn, []UsersRow{user_row})
+			return ""
+		}
+		// defer tx.Rollback() // The rollback will be ignored if the tx has been committed later in the function.
+
+		rows, err := tx.Query(query)
+		if err != nil {
+			fmt.Println(err)
+			return ""
+		}
+		defer rows.Close()
+
+		ret_rows := []UsersRow{}
+
+		for rows.Next() {
+			var id int
+			var username string
+			var email string
+			err := rows.Scan(&id, &username, &email)
+			if err != nil {
+				fmt.Println(err)
+				return ""
+			}
+
+			user_row := UsersRow{
+				Id:        id,
+				Name:      username,
+				Email:     email,
+				VoteCount: 1,
+			}
+
+			ret_rows = append(ret_rows, user_row)
+
+			fmt.Println(ret_rows)
+		}
+
+		sendMessages(conn, ret_rows)
+		return ""
+	}
+	return ""
 }
 
 func receiveMessages(conn net.Conn, db *sql.DB) {
@@ -126,29 +266,26 @@ func receiveMessages(conn net.Conn, db *sql.DB) {
 		isSelect := (strings.Contains(msg, "SELECT") || strings.Contains(msg, "select"))
 
 		if isSelect {
-			rows := query_sql(db, msg)
-			sendMessages(conn, rows)
+			query_sql(db, msg, conn)
+			// sendMessages(conn, rows)
 		} else {
-			exec_query(db, msg)
+			exec_query(db, msg, conn)
 
 		}
 	}
 }
 
 func sendMessages(conn net.Conn, rows []UsersRow) {
-	fmt.Println((rows))
+	//fmt.Println((rows))
 	jsonData, err := json.Marshal(rows)
-	fmt.Println((jsonData))
+	//fmt.Println((jsonData))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	fmt.Println("made it here")
-
 	_, err = conn.Write(jsonData)
 	if err != nil {
-		fmt.Println("err when writing back")
 		fmt.Println(err)
 		return
 	}

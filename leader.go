@@ -8,17 +8,20 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 var (
-	connMap = make(map[int][]net.Conn) // map of <partition id, pool of active participants>
+	connMap     = make(map[int][]net.Conn) // map of <partition id, pool of active participants>
+	allPrepared = true
 )
 
 // record structure from Users table
 type UsersRow struct {
-	Id    int
-	Name  string
-	Email string
+	Id        int
+	Name      string
+	Email     string
+	VoteCount int
 }
 
 // structure contains atrributes about a query
@@ -111,7 +114,13 @@ func readFromFollower(conn net.Conn) {
 
 		// Process the received data
 		for _, item := range receivedData {
-			fmt.Printf("Received: ID=%d, UserName=%s, Email=%s\n", item.Id, item.Name, item.Email)
+			if item.VoteCount == -1 {
+				//abort
+				allPrepared = false
+			} else {
+				fmt.Printf("Received: ID=%d, UserName=%s, Email=%s\n", item.Id, item.Name, item.Email)
+			}
+			// readjust print statement later
 		}
 	}
 }
@@ -136,14 +145,15 @@ func removeFollower(follower net.Conn) {
 }
 
 func SendMessageToFollowers(msg string) {
-
+	allPrepared = true
 	queries := strings.Split(msg, ";")
-
-	// iterate throuugh all queries except last (empty) query
-	for i := 0; i < len(queries)-1; i++ {
+	// fmt.Println(queries[0])
+	// fmt.Println(queries[1])
+	fmt.Println("queires", queries, "length", len(queries))
+	// iterate through all queries except last (empty) query
+	for i := 0; i < len(queries)-1 && allPrepared; i++ {
 
 		query := queries[i]
-
 		queryStruct, err := parser.ParseQuery(query)
 
 		if err != nil {
@@ -151,7 +161,9 @@ func SendMessageToFollowers(msg string) {
 		}
 
 		fmt.Println(queryStruct)
+		//query = "p" + query
 
+		toWriteConnList := []net.Conn{}
 		if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
 
 			// send to one partition
@@ -160,13 +172,7 @@ func SendMessageToFollowers(msg string) {
 
 			connList, _ := connMap[hashedId]
 
-			conn := connList[0]
-
-			_, err := conn.Write([]byte(query))
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+			toWriteConnList = append(toWriteConnList, connList[0])
 
 		} else {
 
@@ -174,16 +180,98 @@ func SendMessageToFollowers(msg string) {
 
 			for _, connList := range connMap {
 				for _, conn := range connList {
-					_, err := conn.Write([]byte(query))
-					if err != nil {
-						fmt.Println(err)
-						return
+					toWriteConnList = append(toWriteConnList, conn)
+				}
+			}
+		}
+
+		fmt.Println(toWriteConnList)
+
+		for _, conn := range toWriteConnList {
+			if allPrepared {
+				fmt.Printf("Polling connection %v ... \n", conn.RemoteAddr())
+				prepare(query, conn)
+				time.Sleep(1 * time.Second)
+			} else {
+				break
+			}
+		}
+	}
+
+	fmt.Println("queires", queries, "length", len(queries))
+
+	if allPrepared {
+		for i := 0; i < len(queries)-1; i++ {
+
+			query := queries[i]
+
+			queryStruct, err := parser.ParseQuery(query)
+
+			if err != nil {
+				// write error back to leader, no need to send to followers!
+			}
+
+			fmt.Println("pkey", queryStruct.PKey)
+
+			toWriteConnList := []net.Conn{}
+			if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
+
+				fmt.Println("should have came here")
+				fmt.Println("connmap", connMap)
+
+				// send to one partition
+
+				hashedId := hashID(queryStruct.PKey)
+
+				fmt.Println("hashedid", hashedId)
+
+				connList, _ := connMap[hashedId]
+
+				toWriteConnList = append(toWriteConnList, connList[0])
+
+			} else {
+
+				fmt.Println("should not have come here")
+
+				// send to both partitions
+
+				for _, connList := range connMap {
+					for _, conn := range connList {
+						toWriteConnList = append(toWriteConnList, conn)
 					}
 				}
 			}
 
-		}
+			fmt.Println(toWriteConnList)
 
+			for _, conn := range toWriteConnList {
+				fmt.Printf("Committing transaction to connection %v ... \n", conn.RemoteAddr())
+				commit(query, conn)
+				time.Sleep(1 * time.Second)
+			}
+		}
+	}
+}
+
+func prepare(query string, conn net.Conn) {
+	query = "p" + query
+
+	_, err := conn.Write([]byte(query))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
+func commit(query string, conn net.Conn) {
+	query = "c" + query
+
+	fmt.Println("what we are sending to follower for commit", query)
+
+	_, err := conn.Write([]byte(query))
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 }
 
