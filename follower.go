@@ -69,9 +69,10 @@ func exec_query(db *sql.DB, query string, conn net.Conn) string {
 	startsWithP := strings.HasPrefix(query, "p")
 
 	if startsWithP {
-		fmt.Println("it did started with p")
+		// fmt.Println("it did started with p")
+		fmt.Println("Running in prepare phase...")
 		//strip the p
-		query = query[1:]
+		query = query[7:]
 		tx, err := db.Begin()
 		if err != nil {
 			// call sendmessage
@@ -83,7 +84,7 @@ func exec_query(db *sql.DB, query string, conn net.Conn) string {
 		}
 		defer tx.Rollback() // The rollback will be ignored if the tx has been committed later in the function.
 
-		fmt.Println("made it past db begin")
+		// fmt.Println("made it past db begin")
 
 		_, err = tx.Exec(query)
 		if err != nil {
@@ -92,7 +93,7 @@ func exec_query(db *sql.DB, query string, conn net.Conn) string {
 				VoteCount: -1,
 			}
 			sendMessages(conn, []UsersRow{user_row})
-			fmt.Println("failed votecount: ", user_row.VoteCount)
+			fmt.Println("Prepare response: ", user_row.VoteCount)
 			return ""
 		}
 
@@ -100,13 +101,14 @@ func exec_query(db *sql.DB, query string, conn net.Conn) string {
 			VoteCount: 1,
 		}
 
-		fmt.Println("VoteCount: ", user_row.VoteCount)
+		fmt.Println("Prepare response: ", user_row.VoteCount)
 		sendMessages(conn, []UsersRow{user_row})
 
 	} else {
-		fmt.Println("it did started with c")
+		// fmt.Println("it did started with c")
+		fmt.Println("Running in commit phase...")
 		//strip the c
-		query = query[1:]
+		query = query[6:]
 		tx, err := db.Begin()
 		if err != nil {
 			// call sendmessage
@@ -118,7 +120,7 @@ func exec_query(db *sql.DB, query string, conn net.Conn) string {
 		}
 		defer tx.Rollback() // The rollback will be ignored if the tx has been committed later in the function.
 
-		fmt.Println("made it past db begin")
+		// fmt.Println("made it past db begin")
 
 		_, err = tx.Exec(query)
 		if err != nil {
@@ -127,13 +129,13 @@ func exec_query(db *sql.DB, query string, conn net.Conn) string {
 				VoteCount: -1,
 			}
 			sendMessages(conn, []UsersRow{user_row})
-			fmt.Println("failed votecount: ", user_row.VoteCount)
+			// fmt.Println("Commit response: ", user_row.VoteCount)
 			return ""
 		}
 
 		err = tx.Commit()
 		if err != nil {
-			fmt.Println("did it come here?")
+			// fmt.Println("did it come here?")
 			user_row := UsersRow{
 				VoteCount: -1,
 			}
@@ -144,7 +146,9 @@ func exec_query(db *sql.DB, query string, conn net.Conn) string {
 			VoteCount: 1,
 		}
 
-		fmt.Println("VoteCount: ", user_row.VoteCount)
+		fmt.Println("Commit succeeded!")
+
+		// fmt.Println("Commit response: ", user_row.VoteCount)
 		sendMessages(conn, []UsersRow{user_row})
 	}
 
@@ -164,9 +168,10 @@ func query_sql(db *sql.DB, query string, conn net.Conn) string {
 	startsWithP := strings.HasPrefix(query, "p")
 
 	if startsWithP {
-		fmt.Println("it did started with p")
+		fmt.Println("Running in prepare phase...")
+		// fmt.Println("it did started with p")
 		//strip the p
-		query = query[1:]
+		query = query[7:]
 		tx, err := db.Begin()
 		if err != nil {
 			// call sendmessage
@@ -178,7 +183,7 @@ func query_sql(db *sql.DB, query string, conn net.Conn) string {
 		}
 		defer tx.Rollback() // The rollback will be ignored if the tx has been committed later in the function.
 
-		fmt.Println("made it past db begin")
+		// fmt.Println("made it past db begin")
 
 		_, err = tx.Query(query)
 		if err != nil {
@@ -199,9 +204,10 @@ func query_sql(db *sql.DB, query string, conn net.Conn) string {
 		sendMessages(conn, []UsersRow{user_row})
 
 	} else {
-		fmt.Println("it did started with c")
+		// fmt.Println("it did started with c")
 		//strip the c
-		query = query[1:]
+		fmt.Println("Running in commit phase...")
+		query = query[6:]
 		tx, err := db.Begin()
 		if err != nil {
 			// call sendmessage
@@ -241,10 +247,11 @@ func query_sql(db *sql.DB, query string, conn net.Conn) string {
 
 			ret_rows = append(ret_rows, user_row)
 
-			fmt.Println(ret_rows)
+			fmt.Println("Query result:", ret_rows)
 		}
 
 		sendMessages(conn, ret_rows)
+		fmt.Println("Sent result to leader!")
 		return ""
 	}
 	return ""
@@ -260,7 +267,7 @@ func receiveMessages(conn net.Conn, db *sql.DB) {
 		}
 
 		msg := string(buffer)
-		fmt.Printf("Received message from leader: %s", msg)
+		fmt.Printf("Received message from leader: %s\n", msg)
 
 		// if query contains select send to query_sql
 		isSelect := (strings.Contains(msg, "SELECT") || strings.Contains(msg, "select"))
