@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -17,6 +18,7 @@ type UsersRow struct {
 	Name      string
 	Email     string
 	VoteCount int
+	DbNumber  int
 }
 
 // structure contains atrributes about a query
@@ -44,6 +46,20 @@ func main() {
 	}
 	defer conn.Close()
 	db := openDB(filepath)
+
+	dbNumberString := string(filepath[2])
+
+	dbNumber, _ := strconv.Atoi(dbNumberString)
+
+	fmt.Println("filepath", filepath)
+	fmt.Println("DB number", dbNumber)
+
+	initUserRow := UsersRow{
+		DbNumber: dbNumber,
+	}
+
+	sendMessages(conn, []UsersRow{initUserRow})
+
 	defer db.Close()
 	go receiveMessages(conn, db)
 

@@ -5,14 +5,17 @@ import (
 	"distributed-sqlite/internal/parser"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 var (
 	connMap     = make(map[int][]net.Conn) // map of <partition id, pool of active participants>
+	dbMap       = make(map[net.Conn]int)   // map of <connection, db file number>
 	allPrepared = true
 )
 
@@ -22,6 +25,7 @@ type UsersRow struct {
 	Name      string
 	Email     string
 	VoteCount int
+	DbNumber  int
 }
 
 // structure contains atrributes about a query
@@ -75,20 +79,77 @@ func acceptFollowers(listener net.Listener) {
 			continue
 		}
 
-		valList1, _ := connMap[0]
-		valList2, _ := connMap[1]
+		// valList1, _ := connMap[0]
+		// valList2, _ := connMap[1]
 
-		if len(valList2) < len(valList1) {
-			valList2 = append(valList2, conn)
-			connMap[1] = valList2
-		} else {
-			valList1 = append(valList1, conn)
-			connMap[0] = valList1
-		}
+		// if len(valList2) < len(valList1) {
+		// 	valList2 = append(valList2, conn)
+		// 	connMap[1] = valList2
+		// } else {
+		// 	valList1 = append(valList1, conn)
+		// 	connMap[0] = valList1
+		// }
 
 		fmt.Printf("Accepted connection: %s. \n", conn.RemoteAddr())
 		go readFromFollower(conn)
 	}
+}
+
+func addConnToConnMap(dbNumber int, conn net.Conn) {
+	dbMap[conn] = dbNumber
+	if dbNumber == 1 || dbNumber == 3 {
+		// if there's already a node in the partition, make it consistent with it
+		connList := connMap[0]
+		if len(connList) == 1 {
+			makeConsistent(dbMap[connList[0]], dbNumber)
+
+		}
+		connMap[0] = append(connMap[0], conn)
+
+	} else {
+		connList := connMap[1]
+		if len(connList) == 1 {
+			makeConsistent(dbMap[connList[0]], dbNumber)
+
+		}
+		connMap[1] = append(connMap[1], conn)
+	}
+}
+
+func makeConsistent(originalFileNumber int, dbNumber int) {
+	fmt.Println(originalFileNumber, dbNumber)
+	originalFileName := "db" + strconv.Itoa(originalFileNumber) + ".db"
+	newFileName := "db" + strconv.Itoa(dbNumber) + ".db"
+	fmt.Println(originalFileName)
+	fmt.Println(newFileName)
+	duplicate(originalFileName, newFileName)
+
+}
+
+func duplicate(originalFileName string, duplicateFileName string) {
+
+	// Opening the original file
+	originalFile, err := os.Open(originalFileName)
+	if err != nil {
+		panic(err)
+	}
+	defer originalFile.Close()
+
+	// Creating the duplicate file
+	duplicateFile, err := os.Create(duplicateFileName)
+	if err != nil {
+		panic(err)
+	}
+	defer duplicateFile.Close()
+
+	// Copying the contents of the original file to the duplicate file
+	_, err = io.Copy(duplicateFile, originalFile)
+	if err != nil {
+		panic(err)
+	}
+
+	// The file has been successfully duplicated
+	println("File duplicated successfully")
 }
 
 func readFromFollower(conn net.Conn) {
@@ -120,6 +181,9 @@ func readFromFollower(conn net.Conn) {
 			} else {
 				if item.Name != "" {
 					fmt.Printf("Received: ID=%d, UserName=%s, Email=%s\n", item.Id, item.Name, item.Email)
+				} else if item.DbNumber != 0 {
+					addConnToConnMap(item.DbNumber, conn)
+					fmt.Println("Conn map after adding", connMap)
 				}
 			}
 			// readjust print statement later
@@ -142,8 +206,9 @@ func removeFollower(follower net.Conn) {
 				break
 			}
 		}
-
 	}
+
+	fmt.Println("Connmap after removal", connMap)
 }
 
 func SendMessageToFollowers(msg string) {
@@ -154,13 +219,15 @@ func SendMessageToFollowers(msg string) {
 	// fmt.Println("queires", queries, "length", len(queries))
 	// iterate through all queries except last (empty) query
 	// CHANGED FROM for i := 0; i < len(queries)-1 && allPrepared; i++ {
+	// PREPARE
 	for i := 0; i < len(queries)-1; i++ {
 
 		query := queries[i]
 		queryStruct, err := parser.ParseQuery(query)
 
 		if err != nil {
-			// write error back to leader, no need to send to followers!
+			fmt.Println("Error with query:", err)
+			return
 		}
 
 		// fmt.Println(queryStruct)
@@ -175,15 +242,27 @@ func SendMessageToFollowers(msg string) {
 
 			connList, _ := connMap[hashedId]
 
-			toWriteConnList = append(toWriteConnList, connList[0])
+			if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
+				fmt.Println("was a select query")
+				toWriteConnList = append(toWriteConnList, connList[0])
+			} else {
+				for _, conn := range connList {
+					toWriteConnList = append(toWriteConnList, conn)
+				}
+			}
 
 		} else {
 
 			// send to both partitions
 
 			for _, connList := range connMap {
-				for _, conn := range connList {
-					toWriteConnList = append(toWriteConnList, conn)
+				if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
+					fmt.Println("was a select query")
+					toWriteConnList = append(toWriteConnList, connList[0])
+				} else {
+					for _, conn := range connList {
+						toWriteConnList = append(toWriteConnList, conn)
+					}
 				}
 			}
 		}
@@ -203,6 +282,7 @@ func SendMessageToFollowers(msg string) {
 
 	// fmt.Println("queires", queries, "length", len(queries))
 
+	// COMMIT
 	if allPrepared {
 		for i := 0; i < len(queries)-1; i++ {
 
@@ -230,7 +310,14 @@ func SendMessageToFollowers(msg string) {
 
 				connList, _ := connMap[hashedId]
 
-				toWriteConnList = append(toWriteConnList, connList[0])
+				if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
+					fmt.Println("was a select query")
+					toWriteConnList = append(toWriteConnList, connList[0])
+				} else {
+					for _, conn := range connList {
+						toWriteConnList = append(toWriteConnList, conn)
+					}
+				}
 
 			} else {
 
@@ -239,8 +326,13 @@ func SendMessageToFollowers(msg string) {
 				// send to both partitions
 
 				for _, connList := range connMap {
-					for _, conn := range connList {
-						toWriteConnList = append(toWriteConnList, conn)
+					if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
+						fmt.Println("was a select query")
+						toWriteConnList = append(toWriteConnList, connList[0])
+					} else {
+						for _, conn := range connList {
+							toWriteConnList = append(toWriteConnList, conn)
+						}
 					}
 				}
 			}
