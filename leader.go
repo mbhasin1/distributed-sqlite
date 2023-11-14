@@ -19,13 +19,13 @@ var (
 	allPrepared = true
 )
 
-// record structure from Users table
+// generic structure from Users table
 type UsersRow struct {
-	Id        int
-	Name      string
-	Email     string
-	VoteCount int
-	DbNumber  int
+	Id       int
+	Name     string
+	Email    string
+	PrepResp string
+	DbNumber int
 }
 
 // structure contains atrributes about a query
@@ -79,17 +79,6 @@ func acceptFollowers(listener net.Listener) {
 			continue
 		}
 
-		// valList1, _ := connMap[0]
-		// valList2, _ := connMap[1]
-
-		// if len(valList2) < len(valList1) {
-		// 	valList2 = append(valList2, conn)
-		// 	connMap[1] = valList2
-		// } else {
-		// 	valList1 = append(valList1, conn)
-		// 	connMap[0] = valList1
-		// }
-
 		fmt.Printf("Accepted connection: %s. \n", conn.RemoteAddr())
 		go readFromFollower(conn)
 	}
@@ -98,11 +87,9 @@ func acceptFollowers(listener net.Listener) {
 func addConnToConnMap(dbNumber int, conn net.Conn) {
 	dbMap[conn] = dbNumber
 	if dbNumber == 1 || dbNumber == 3 {
-		// if there's already a node in the partition, make it consistent with it
 		connList := connMap[0]
-		if len(connList) == 1 {
+		if len(connList) == 1 { // if there's already a node in the partition, make it consistent with it
 			makeConsistent(dbMap[connList[0]], dbNumber)
-
 		}
 		connMap[0] = append(connMap[0], conn)
 
@@ -116,40 +103,37 @@ func addConnToConnMap(dbNumber int, conn net.Conn) {
 	}
 }
 
-func makeConsistent(originalFileNumber int, dbNumber int) {
-	fmt.Println(originalFileNumber, dbNumber)
-	originalFileName := "db" + strconv.Itoa(originalFileNumber) + ".db"
-	newFileName := "db" + strconv.Itoa(dbNumber) + ".db"
-	fmt.Println(originalFileName)
-	fmt.Println(newFileName)
-	duplicate(originalFileName, newFileName)
+func makeConsistent(existingDbNumber int, newDbNumber int) {
+	existingDbName := "db" + strconv.Itoa(existingDbNumber) + ".db"
+	newDbName := "db" + strconv.Itoa(newDbNumber) + ".db"
+	duplicate(existingDbName, newDbName)
 
 }
 
-func duplicate(originalFileName string, duplicateFileName string) {
+func duplicate(existingDbName string, newDbName string) {
 
 	// Opening the original file
-	originalFile, err := os.Open(originalFileName)
+	existingDbFile, err := os.Open(existingDbName)
 	if err != nil {
 		panic(err)
 	}
-	defer originalFile.Close()
+	defer existingDbFile.Close()
 
 	// Creating the duplicate file
-	duplicateFile, err := os.Create(duplicateFileName)
+	newDbFile, err := os.Create(newDbName)
 	if err != nil {
 		panic(err)
 	}
-	defer duplicateFile.Close()
+	defer newDbFile.Close()
 
 	// Copying the contents of the original file to the duplicate file
-	_, err = io.Copy(duplicateFile, originalFile)
+	_, err = io.Copy(newDbFile, existingDbFile)
 	if err != nil {
 		panic(err)
 	}
 
 	// The file has been successfully duplicated
-	println("File duplicated successfully")
+	fmt.Println("New connection consistent with primary node")
 }
 
 func readFromFollower(conn net.Conn) {
@@ -175,18 +159,19 @@ func readFromFollower(conn net.Conn) {
 
 		// Process the received data
 		for _, item := range receivedData {
-			if item.VoteCount == -1 {
-				//abort
+			if item.PrepResp == "Fail" { // is a prepare failure message
+				fmt.Println("Prepare response: Fail")
 				allPrepared = false
 			} else {
-				if item.Name != "" {
-					fmt.Printf("Received: ID=%d, UserName=%s, Email=%s\n", item.Id, item.Name, item.Email)
-				} else if item.DbNumber != 0 {
+				if item.DbNumber != 0 { // is a register connection message
 					addConnToConnMap(item.DbNumber, conn)
-					fmt.Println("Conn map after adding", connMap)
+				} else if item.Name != "" { // is query response mssage
+					//output to out file here
+					fmt.Printf("Received: ID=%d, UserName=%s, Email=%s\n", item.Id, item.Name, item.Email)
+				} else {
+					fmt.Println("Prepare response: Pass")
 				}
 			}
-			// readjust print statement later
 		}
 	}
 }
@@ -207,137 +192,39 @@ func removeFollower(follower net.Conn) {
 			}
 		}
 	}
-
-	fmt.Println("Connmap after removal", connMap)
 }
 
 func SendMessageToFollowers(msg string) {
 	allPrepared = true
 	queries := strings.Split(msg, ";")
-	// fmt.Println(queries[0])
-	// fmt.Println(queries[1])
-	// fmt.Println("queires", queries, "length", len(queries))
-	// iterate through all queries except last (empty) query
-	// CHANGED FROM for i := 0; i < len(queries)-1 && allPrepared; i++ {
-	// PREPARE
+
+	toWriteConnList := []net.Conn{}
+
+	// PREPARE phase - iterate through all queries except last (empty) query
 	for i := 0; i < len(queries)-1; i++ {
 
 		query := queries[i]
 		queryStruct, err := parser.ParseQuery(query)
 
-		if err != nil {
+		if err != nil { // Return error and do not send query to followers
 			fmt.Println("Error with query:", err)
 			return
 		}
 
-		// fmt.Println(queryStruct)
-		//query = "p" + query
-
-		toWriteConnList := []net.Conn{}
-		if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
-
-			// send to one partition
-
-			hashedId := hashID(queryStruct.PKey)
-
-			connList, _ := connMap[hashedId]
-
-			if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
-				fmt.Println("was a select query")
-				toWriteConnList = append(toWriteConnList, connList[0])
-			} else {
-				for _, conn := range connList {
-					toWriteConnList = append(toWriteConnList, conn)
-				}
-			}
-
-		} else {
-
-			// send to both partitions
-
-			for _, connList := range connMap {
-				if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
-					fmt.Println("was a select query")
-					toWriteConnList = append(toWriteConnList, connList[0])
-				} else {
-					for _, conn := range connList {
-						toWriteConnList = append(toWriteConnList, conn)
-					}
-				}
-			}
-		}
-
-		// fmt.Println(toWriteConnList)
+		toWriteConnList = getToWriteConnList(Query(*queryStruct))
 
 		for _, conn := range toWriteConnList {
-			// if allPrepared {
 			fmt.Printf("Polling connection %v ... \n", conn.RemoteAddr())
 			prepare(query, conn)
 			time.Sleep(1 * time.Second)
-			// } else {
-			// 	break
-			// }
 		}
 	}
 
-	// fmt.Println("queires", queries, "length", len(queries))
-
-	// COMMIT
+	// COMMIT phase - iterate through all queries except last (empty) query
 	if allPrepared {
 		for i := 0; i < len(queries)-1; i++ {
 
 			query := queries[i]
-
-			queryStruct, err := parser.ParseQuery(query)
-
-			if err != nil {
-				// write error back to leader, no need to send to followers!
-			}
-
-			// fmt.Println("pkey", queryStruct.PKey)
-
-			toWriteConnList := []net.Conn{}
-			if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr {
-
-				// fmt.Println("should have came here")
-				// fmt.Println("connmap", connMap)
-
-				// send to one partition
-
-				hashedId := hashID(queryStruct.PKey)
-
-				// fmt.Println("hashedid", hashedId)
-
-				connList, _ := connMap[hashedId]
-
-				if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
-					fmt.Println("was a select query")
-					toWriteConnList = append(toWriteConnList, connList[0])
-				} else {
-					for _, conn := range connList {
-						toWriteConnList = append(toWriteConnList, conn)
-					}
-				}
-
-			} else {
-
-				// fmt.Println("should not have come here")
-
-				// send to both partitions
-
-				for _, connList := range connMap {
-					if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
-						fmt.Println("was a select query")
-						toWriteConnList = append(toWriteConnList, connList[0])
-					} else {
-						for _, conn := range connList {
-							toWriteConnList = append(toWriteConnList, conn)
-						}
-					}
-				}
-			}
-
-			// fmt.Println(toWriteConnList)
 
 			for _, conn := range toWriteConnList {
 				fmt.Printf("Committing transaction to connection %v ... \n", conn.RemoteAddr())
@@ -345,9 +232,43 @@ func SendMessageToFollowers(msg string) {
 				time.Sleep(1 * time.Second)
 			}
 		}
-	} else {
+	} else { // 1+ queries failed in prepare phase
 		fmt.Println("One or more transactions failed the prepare phase!")
 	}
+}
+
+func getToWriteConnList(queryStruct Query) []net.Conn {
+	toWriteConnList := []net.Conn{}
+
+	if len(queryStruct.Tables) <= 1 && queryStruct.PKey != -1 && !queryStruct.HasOr { // send to one partition
+
+		hashedId := hashID(queryStruct.PKey)
+
+		connList, _ := connMap[hashedId]
+
+		// send all valid select queries to first partition
+		if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
+			toWriteConnList = append(toWriteConnList, connList[0])
+		} else {
+			for _, conn := range connList {
+				toWriteConnList = append(toWriteConnList, conn)
+			}
+		}
+
+	} else { // send to both partitions
+
+		for _, connList := range connMap {
+			if queryStruct.Type == "select" || queryStruct.Type == "SELECT" {
+				toWriteConnList = append(toWriteConnList, connList[0])
+			} else {
+				for _, conn := range connList {
+					toWriteConnList = append(toWriteConnList, conn)
+				}
+			}
+		}
+	}
+
+	return toWriteConnList
 }
 
 func prepare(query string, conn net.Conn) {
@@ -362,8 +283,6 @@ func prepare(query string, conn net.Conn) {
 
 func commit(query string, conn net.Conn) {
 	query = "commit" + " " + query
-
-	// fmt.Println("what we are sending to follower for commit", query)
 
 	_, err := conn.Write([]byte(query))
 	if err != nil {
