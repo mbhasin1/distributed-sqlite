@@ -72,6 +72,14 @@ func main() {
 }
 
 func acceptFollowers(listener net.Listener) {
+	outFile, err := os.Create("out.txt")
+
+	if err != nil {
+		fmt.Println("Error creating outputfile!")
+		return
+	}
+	defer outFile.Close()
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -80,7 +88,7 @@ func acceptFollowers(listener net.Listener) {
 		}
 
 		fmt.Printf("Accepted connection: %s. \n", conn.RemoteAddr())
-		go readFromFollower(conn)
+		go readFromFollower(conn, outFile)
 	}
 }
 
@@ -136,7 +144,7 @@ func duplicate(existingDbName string, newDbName string) {
 	fmt.Println("New connection consistent with primary node")
 }
 
-func readFromFollower(conn net.Conn) {
+func readFromFollower(conn net.Conn, outFile *os.File) {
 	defer conn.Close()
 
 	for {
@@ -157,23 +165,34 @@ func readFromFollower(conn net.Conn) {
 			return
 		}
 
-		// Process the received data
-		for _, item := range receivedData {
-			if item.PrepResp == "Fail" { // is a prepare failure message
-				fmt.Println("Prepare response: Fail")
-				allPrepared = false
-			} else {
-				if item.DbNumber != 0 { // is a register connection message
-					addConnToConnMap(item.DbNumber, conn)
-				} else if item.Name != "" { // is query response mssage
-					//output to out file here
-					fmt.Printf("Received: ID=%d, UserName=%s, Email=%s\n", item.Id, item.Name, item.Email)
-				} else {
-					fmt.Println("Prepare response: Pass")
-				}
-			}
+		firstItem := receivedData[0]
+
+		if firstItem.PrepResp == "Fail" { // is a prepare failure message
+			fmt.Println("Prepare response: Fail")
+			allPrepared = false
+		} else if firstItem.DbNumber != 0 { // is a register connection message
+			addConnToConnMap(firstItem.DbNumber, conn)
+		} else if firstItem.Name != "" { // is list of rows from a query
+			write(receivedData, *outFile)
+		} else { // is a prepare success message
+			fmt.Println("Prepare response: Pass")
+		}
+
+	}
+}
+
+func write(data []UsersRow, out os.File) {
+
+	for _, row := range data {
+		_, err := out.WriteString(fmt.Sprintf("Id: %s, Name: %s, Email: %s\n", strconv.Itoa(row.Id), row.Name, row.Email))
+		if err != nil {
+			fmt.Println("Error writing to out file!")
+			return
 		}
 	}
+
+	fmt.Println("Wrote output to out file!")
+
 }
 
 func sendMessageToTsxMngr(msg string) {
