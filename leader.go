@@ -192,13 +192,19 @@ func write(data []UsersRow, out os.File) {
 	}
 
 	fmt.Println("Wrote output to out file!")
-
 }
 
 func sendMessageToTsxMngr(msg string) {
-	fmt.Print("Leader sent: " + msg)
-	SendMessageToFollowers(msg)
+	if isBothPartsActive() {
+		fmt.Print("Leader sent: " + msg)
+		SendMessageToFollowers(msg)
+	} else {
+		fmt.Println("At least one node in each partition must be active!")
+	}
+}
 
+func isBothPartsActive() bool {
+	return len(connMap[0]) >= 1 && len(connMap[1]) >= 1
 }
 
 func removeFollower(follower net.Conn) {
