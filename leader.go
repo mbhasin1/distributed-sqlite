@@ -250,6 +250,9 @@ func SendMessageToFollowers(msg string) {
 		for i := 0; i < len(queries)-1; i++ {
 
 			query := queries[i]
+			queryStruct, _ := parser.ParseQuery(query)
+
+			toWriteConnList = getToWriteConnList(Query(*queryStruct))
 
 			for _, conn := range toWriteConnList {
 				fmt.Printf("Committing transaction to connection %v ... \n", conn.RemoteAddr())
