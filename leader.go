@@ -165,17 +165,19 @@ func readFromFollower(conn net.Conn, outFile *os.File) {
 			return
 		}
 
-		firstItem := receivedData[0]
+		if len(receivedData) > 0 {
+			firstItem := receivedData[0]
 
-		if firstItem.PrepResp == "Fail" { // is a prepare failure message
-			fmt.Println("Prepare response: Fail")
-			allPrepared = false
-		} else if firstItem.DbNumber != 0 { // is a register connection message
-			addConnToConnMap(firstItem.DbNumber, conn)
-		} else if firstItem.Name != "" { // is list of rows from a query
-			write(receivedData, *outFile)
-		} else { // is a prepare success message
-			fmt.Println("Prepare response: Pass")
+			if firstItem.PrepResp == "Fail" { // is a prepare failure message
+				fmt.Println("Response: Fail")
+				allPrepared = false
+			} else if firstItem.DbNumber != 0 { // is a register connection message
+				addConnToConnMap(firstItem.DbNumber, conn)
+			} else if firstItem.Name != "" { // is list of rows from a query
+				write(receivedData, *outFile)
+			} else { // is a prepare success message
+				fmt.Println("Response: Pass")
+			}
 		}
 
 	}
@@ -184,11 +186,19 @@ func readFromFollower(conn net.Conn, outFile *os.File) {
 func write(data []UsersRow, out os.File) {
 
 	for _, row := range data {
-		_, err := out.WriteString(fmt.Sprintf("Id: %s, Name: %s, Email: %s\n", strconv.Itoa(row.Id), row.Name, row.Email))
+		formattedrow := fmt.Sprintf("Id: %s, Name: %s, Email: %s\n", strconv.Itoa(row.Id), row.Name, row.Email)
+		fmt.Print(formattedrow)
+		_, err := out.WriteString(formattedrow)
 		if err != nil {
 			fmt.Println("Error writing to out file!")
 			return
 		}
+	}
+
+	_, err := out.WriteString("\n")
+	if err != nil {
+		fmt.Println("Error writing to out file!")
+		return
 	}
 
 	fmt.Println("Wrote output to out file!")

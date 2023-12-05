@@ -33,13 +33,38 @@ go run follower.go localhost:8080 db1.db
 go run follower.go localhost:8080 db2.db
 ```
 
-4. Optional: Spin up an additional follower node in each partition using the command above, but **be sure to change the database file name (it must be db3.db for partition 1, db4.db for partition 2).** 
+4. Optional: Spin up an additional follower in partition #1
+``` 
+go run follower.go localhost:8080 db3.db
+```
 
-5. Execute any query(s). For a singular query, write the query and hit enter. For multiple queries, please write them one after another and then only hit enter.
+5. Optional: Spin up an additional follower in partition #2
+``` 
+go run follower.go localhost:8080 db4.db
+```
+
+6. Execute any query(s). For a singular query, write the query and hit enter. For multiple queries, please write them one after another and then only hit enter. **For simplicity, please use the existing schema defined above (table name is Users).**
+
+Example queries:
+```
+select * from Users;
+```
+```
+insert into Users values (2, 'Charlie', 'charlie@sjsu.edu');
+```
+```
+select * from Users where id=2;
+```
+```
+insert into Users values (3, 'Dave', 'dave@sjsu.edu'); insert into Users values (4, 'Erin', 'erin@sjsu.edu');
+```
+
+7. For output of queries, view leader's logs in its terminal, or open the output file (out.txt). Additionally, view the database contents via [SQLite's Database Viewer](https://sqliteviewer.app) by providing the corresponding .db file.
+
 
 ## Testing the system
 
-Availability can be tested by killing one follower instance (control + C to end terminal) assuming there are two active nodes in the partition. The system will be still be available. To test consistency, bring back up the node **using the same command used to spin it up**. The nodes will be consistent with each other. Two-phase commit protocol is strictly enforced on each write query. 2PC can be tested by executing a list of queries in which one query causes an error. This transaction will not be committed.
+Availability can be tested by killing one follower instance (control + C to end terminal) assuming there are two active nodes in the partition. The system will be still be available. To test consistency, bring back up that node that was just brought down **using the same command used to spin it up**. The nodes in that partition will be consistent with each other. Two-phase commit protocol is strictly enforced on each write query. 2PC can be tested by executing a list of queries in which one query causes an error. This transaction will not be committed.
 
 [**Here is an example demo of our system.**](https://youtu.be/yA76lHdNX7g)
 
